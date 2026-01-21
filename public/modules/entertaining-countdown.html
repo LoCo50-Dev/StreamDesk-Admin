@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Entertaining Countdown Addon</title>
+  
+  <!-- ==========================================
+       MODULE CONFIGURATION
+       ========================================== -->
+  <script type="application/json" id="module-config">
+  {
+    "id": "entertaining-countdown",
+    "name": "Entertaining Countdown",
+    "type": "Addon",
+    "priority": 0,
+    "hasControllerUI": false,
+    "hasOverlay": false,
+    "dependencies": ["timer"]
+  }
+  </script>
+  
+  <!-- ==========================================
+       SERVER MODULE CODE
+       ========================================== -->
+  <script type="text/x-server-module">
+// Initialize entertainment state
+if (!moduleStates.entertainingCountdown) {
+  moduleStates.entertainingCountdown = {
+    enabled: false,
+    videos: []
+  };
+}
+
+const entertainState = moduleStates.entertainingCountdown;
+
+// Scan videos from /public/vids/ recursively
+function scanVideos() {
+  const vidsPath = path.join(__dirname, 'public', 'vids');
+  const videos = [];
+  
+  function scanDir(dir) {
+    try {
+      if (!fs.existsSync(dir)) {
+        console.log('[ENTERTAINING] vids folder not found, creating...');
+        fs.mkdirSync(dir, { recursive: true });
+        return;
+      }
+      
+      const files = fs.readdirSync(dir);
+      
+      files.forEach(file => {
+        const fullPath = path.join(dir, file);
+        const stat = fs.statSync(fullPath);
+        
+        if (stat.isDirectory()) {
+          scanDir(fullPath);
+        } else {
+          const ext = path.extname(file).toLowerCase();
+          const videoExts = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv'];
+          
+          if (videoExts.includes(ext)) {
+            const relativePath = path.relative(path.join(__dirname, 'public'), fullPath);
+            videos.push({
+              name: file,
+              path: '/' + relativePath.replace(/\\/g, '/')
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.error('[ENTERTAINING] Error scanning directory:', err);
+    }
+  }
+  
+  scanDir(vidsPath);
+  entertainState.videos = videos;
+  console.log(`[ENTERTAINING] Scanned ${videos.length} videos from /vids`);
+}
+
+// Scan on startup
+scanVideos();
+
+// Routes
+app.get('/api/entertaining/videos', (req, res) => {
+  res.json({ videos: entertainState.videos });
+});
+
+app.get('/api/entertaining/state', (req, res) => {
+  res.json({ enabled: entertainState.enabled });
+});
+
+app.post('/api/entertaining/state', getUserFromSession, (req, res) => {
+  const { enabled } = req.body;
+  entertainState.enabled = enabled;
+  console.log(`[ENTERTAINING] ${enabled ? 'Enabled' : 'Disabled'}`);
+  res.json({ enabled: entertainState.enabled });
+});
+
+app.post('/api/entertaining/rescan', getUserFromSession, (req, res) => {
+  scanVideos();
+  res.json({ videos: entertainState.videos });
+});
+  </script>
+</head>
+<body>
+  <div style="color: white; text-align: center; padding: 50px; font-family: Arial;">
+    <h1>🎬 Entertaining Countdown Addon</h1>
+    <p>Priority: 0 (Addon - No UI)</p>
+    <p>This module provides video entertainment during countdown breaks.</p>
+    <p style="margin-top: 30px; opacity: 0.7;">Server routes active at /api/entertaining/*</p>
+  </div>
+</body>
+</html>
